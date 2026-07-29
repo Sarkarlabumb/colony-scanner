@@ -56,6 +56,10 @@
   }
   .reticle::before{ top:-2px; left:-2px; border-top:4px solid var(--amber); border-left:4px solid var(--amber); border-radius: 6px 0 0 0;}
   .reticle::after{ bottom:-2px; right:-2px; border-bottom:4px solid var(--amber); border-right:4px solid var(--amber); border-radius: 0 0 6px 0;}
+  .focus-hint{
+    position:absolute; left:0; right:0; bottom:8px; text-align:center;
+    font-family:var(--mono); font-size:11px; color:rgba(255,255,255,0.75); pointer-events:none;
+  }
   .flash{
     position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none;
   }
@@ -206,7 +210,8 @@
   <div class="viewfinder" id="viewfinder">
     <video id="video" playsinline muted></video>
     <div class="reticle" id="reticle" style="display:none;"></div>
-    <div class="idle-state" id="idleState">Tap "Start scanning" to turn on the camera and point it at a cage card barcode.</div>
+    <div class="focus-hint" id="focusHint" style="display:none;">Hold steady, ~6-8 in from the card</div>
+    <div class="idle-state" id="idleState">Tap "Start scanning," hold the card about 6&ndash;8 inches away in good light, and center the barcode in the box.</div>
     <div class="flash" id="flash"></div>
   </div>
   <div class="scan-controls">
@@ -317,6 +322,8 @@
   var shareBtn = document.getElementById("shareBtn");
   var idleState = document.getElementById("idleState");
   var reticle = document.getElementById("reticle");
+  var focusHint = document.getElementById("focusHint");
+  var viewfinder = document.getElementById("viewfinder");
   var flashEl = document.getElementById("flash");
   var videoEl = document.getElementById("video");
   var downloadLink = document.getElementById("downloadLink");
@@ -657,8 +664,9 @@
     statusLine.textContent = "Requesting camera access\u2026";
     idleState.style.display = "none";
     reticle.style.display = "block";
+    focusHint.style.display = "block";
 
-    var constraints = { video: { facingMode: { ideal: "environment" } } };
+    var constraints = { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } };
 
     codeReader.decodeFromConstraints(constraints, videoEl, function(result, err){
       if(result){
@@ -667,7 +675,7 @@
         // (e.g. "B8B D+A") is a Code 39 misfire, not a real cage number — ignore it.
         if(!/^[0-9]{4,14}$/.test(text)){
           statusLine.classList.remove("err");
-          statusLine.textContent = "Scanning\u2026 hold steady on the barcode.";
+          statusLine.textContent = "Read (ignored, not numeric): " + text;
           return;
         }
         if(modalOpen) return;
@@ -689,6 +697,7 @@
       scanning = false;
       idleState.style.display = "flex";
       reticle.style.display = "none";
+      focusHint.style.display = "none";
       statusLine.classList.add("err");
       if(err && err.name === "NotAllowedError"){
         statusLine.textContent = "Camera permission denied. Allow camera access in your browser settings and try again.";
@@ -709,6 +718,7 @@
     toggleScanBtn.classList.remove("stop");
     idleState.style.display = "flex";
     reticle.style.display = "none";
+      focusHint.style.display = "none";
     statusLine.classList.remove("err");
     statusLine.textContent = "Stopped.";
   }
