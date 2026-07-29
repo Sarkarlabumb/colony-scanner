@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Colony Scanner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -139,9 +139,9 @@
     position:fixed; left:0; right:0; bottom:0; z-index:20;
     background:#fff; border-top:1px solid var(--line);
     padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-    display:flex; gap:10px;
+    display:flex; gap:8px; flex-wrap:wrap;
   }
-  .export-bar .btn{ font-size:14px; padding:12px 10px; }
+  .export-bar .btn{ font-size:13px; padding:12px 8px; flex:1 1 auto; min-width:100px; }
   .btn-export{ background: var(--ink); color:#fff; }
   .btn-export-alt{ background:#fff; color:var(--ink); border:1px solid var(--line); }
 
@@ -150,12 +150,13 @@
   .modal-overlay{
     position:fixed; inset:0; background:rgba(17,20,19,0.55); z-index:50;
     display:none; align-items:flex-end; justify-content:center;
+    height:100vh; height:100dvh;
   }
   .modal-overlay.open{ display:flex; }
   .modal-card{
     background:#fff; width:100%; max-width:480px; border-radius: 14px 14px 0 0;
     padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
-    max-height: 88vh; overflow-y:auto;
+    max-height: 85vh; max-height: 85dvh; overflow-y:auto;
   }
   .modal-card h2{
     font-family:var(--mono); font-size:15px; margin:0 0 4px; letter-spacing:0.01em;
@@ -226,6 +227,7 @@
 <div class="export-bar">
   <button class="btn btn-export" id="exportXlsxBtn">Export .xlsx</button>
   <button class="btn btn-export-alt" id="exportCsvBtn">Export .csv</button>
+  <button class="btn btn-export-alt" id="shareBtn" style="display:none;">Share…</button>
 </div>
 
 <a id="downloadLink" class="visually-hidden"></a>
@@ -310,6 +312,7 @@
   var clearBtn = document.getElementById("clearBtn");
   var exportXlsxBtn = document.getElementById("exportXlsxBtn");
   var exportCsvBtn = document.getElementById("exportCsvBtn");
+  var shareBtn = document.getElementById("shareBtn");
   var idleState = document.getElementById("idleState");
   var reticle = document.getElementById("reticle");
   var flashEl = document.getElementById("flash");
@@ -335,6 +338,15 @@
 
   var modalEntry = null;
   var modalOpen = false;
+
+  function syncModalHeight(){
+    var vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+    modalOverlay.style.height = vh + "px";
+  }
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize", syncModalHeight);
+  }
+  window.addEventListener("resize", syncModalHeight);
 
   function loadEntries(){
     try{
@@ -537,6 +549,7 @@
   function openModal(entry){
     modalEntry = entry;
     modalOpen = true;
+    syncModalHeight();
     malesInput.value = "";
     femalesInput.value = "";
     pupsCountInput.value = "";
@@ -722,6 +735,45 @@
     downloadLink.click();
     setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
   }
+
+  function buildXlsxFile(){
+    var rows = buildRows();
+    var ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{wch:4},{wch:16},{wch:8},{wch:8},{wch:14},{wch:10},{wch:12},{wch:12},{wch:22},{wch:22},{wch:14},{wch:20}];
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Colony Scan");
+    var stamp = new Date().toISOString().slice(0,10);
+    var arrayBuf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    var filename = "colony-scan-" + stamp + ".xlsx";
+    var file = new File([arrayBuf], filename, {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
+    return file;
+  }
+
+  var shareSupported = false;
+  try{
+    if(navigator.canShare){
+      var testFile = new File(["test"], "test.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      shareSupported = navigator.canShare({ files: [testFile] });
+    }
+  }catch(e){ shareSupported = false; }
+  if(shareSupported) shareBtn.style.display = "";
+
+  shareBtn.addEventListener("click", function(){
+    if(!entries.length){ statusLine.textContent = "Nothing to share yet."; return; }
+    var file = buildXlsxFile();
+    navigator.share({
+      files: [file],
+      title: "Colony scan export",
+      text: "Mouse colony scan data"
+    }).catch(function(err){
+      if(err && err.name !== "AbortError"){
+        statusLine.classList.add("err");
+        statusLine.textContent = "Share failed: " + (err.message || err);
+      }
+    });
+  });
 
   exportXlsxBtn.addEventListener("click", function(){
     if(!entries.length){ statusLine.textContent = "Nothing to export yet."; return; }
