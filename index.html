@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Colony Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #f7f7f4;
+    --ink: #1c2321;
+    --ink-soft: #55605c;
+    --line: #d9d6cc;
+    --card: #ffffff;
+    --teal: #2a6f6f;
+    --teal-dark: #1d5252;
+    --amber: #c98a2c;
+    --danger: #a83e3e;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html,body{ margin:0; padding:0; background:var(--bg); color:var(--ink); font-family:var(--sans); }
+  body{ padding-bottom: 96px; }
+
+  header{
+    position: sticky; top:0; z-index:20;
+    background: var(--ink); color:#fff;
+    padding: 14px 16px 12px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  header .brand{ display:flex; align-items:center; gap:10px; }
+  header .brand .stripe{
+    width:6px; height:28px; border-radius:2px;
+    background: repeating-linear-gradient(180deg, #fff 0 3px, transparent 3px 6px);
+  }
+  header h1{ font-family:var(--mono); font-size:17px; letter-spacing:0.02em; margin:0; font-weight:700; }
+  header .count{ font-family:var(--mono); font-size:13px; color:#cfd6d4; }
+
+  .scan-panel{
+    margin: 14px 16px 8px; background:var(--card); border:1px solid var(--line);
+    border-radius: 10px; overflow:hidden;
+  }
+  .viewfinder{
+    position:relative; width:100%; aspect-ratio: 4/3; background:#0d1211;
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+  }
+  .viewfinder video{ width:100%; height:100%; object-fit:cover; display:block; }
+  .reticle{
+    position:absolute; inset: 18% 10%; border: 2px solid rgba(255,255,255,0.85);
+    border-radius: 8px; pointer-events:none;
+  }
+  .reticle::before, .reticle::after{
+    content:""; position:absolute; width:22px; height:22px; border-color: var(--amber);
+  }
+  .reticle::before{ top:-2px; left:-2px; border-top:4px solid var(--amber); border-left:4px solid var(--amber); border-radius: 6px 0 0 0;}
+  .reticle::after{ bottom:-2px; right:-2px; border-bottom:4px solid var(--amber); border-right:4px solid var(--amber); border-radius: 0 0 6px 0;}
+  .flash{
+    position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none;
+  }
+  .flash.go{ animation: flashpop 320ms ease-out; }
+  @keyframes flashpop{ 0%{opacity:0.55;} 100%{opacity:0;} }
+
+  .idle-state{
+    color:#cfd6d4; font-family:var(--mono); font-size:13px; text-align:center; padding:0 24px;
+  }
+
+  .scan-controls{ display:flex; gap:10px; padding:12px; border-top:1px solid var(--line); }
+  button{ font-family:var(--sans); cursor:pointer; }
+  .btn{
+    border:none; border-radius:8px; padding:12px 16px; font-weight:600; font-size:15px;
+    flex:1; transition: transform 80ms ease, opacity 120ms ease;
+  }
+  .btn:active{ transform: scale(0.97); }
+  .btn-primary{ background: var(--teal); color:#fff; }
+  .btn-primary.stop{ background: var(--danger); }
+  .btn-ghost{ background:transparent; color:var(--ink); border:1px solid var(--line); flex:0 0 auto; }
+  .btn:disabled{ opacity:0.5; }
+
+  .status-line{
+    font-family:var(--mono); font-size:12px; color:var(--ink-soft);
+    padding: 0 16px 6px; min-height: 16px;
+  }
+  .status-line.err{ color: var(--danger); }
+
+  .toolbar{
+    display:flex; gap:8px; align-items:center; margin: 4px 16px 10px; flex-wrap:wrap;
+  }
+  .toolbar .btn-small{
+    border:1px solid var(--line); background:var(--card); border-radius:7px;
+    padding:8px 12px; font-size:13px; font-weight:600; color:var(--ink);
+  }
+  .toolbar .btn-small.warn{ color: var(--danger); border-color: rgba(168,62,62,0.4); }
+  .spacer{ flex:1; }
+
+  .list{ margin: 0 16px; display:flex; flex-direction:column; gap:8px; }
+  .empty{
+    font-family:var(--mono); font-size:13px; color:var(--ink-soft);
+    text-align:center; padding: 30px 20px; border:1px dashed var(--line); border-radius:10px;
+  }
+
+  .entry{
+    background:var(--card); border:1px solid var(--line); border-radius:9px;
+    display:flex; overflow:hidden;
+  }
+  .entry .tab{
+    width:8px; flex:0 0 auto;
+    background: var(--teal);
+  }
+  .entry.manual .tab{ background: var(--amber); }
+  .entry.breeding .tab{ background: #7a4fa0; }
+  .entry-body{ flex:1; padding:10px 12px; display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .entry-row1{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .entry-idx{ font-family:var(--mono); font-size:11px; color:var(--ink-soft); }
+  .entry-time{ font-family:var(--mono); font-size:11px; color:var(--ink-soft); white-space:nowrap; }
+  .entry-code{
+    font-family:var(--mono); font-size:13px; color:var(--ink-soft);
+    overflow-wrap:anywhere; user-select:all;
+  }
+  .field-row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .field{ flex:1; min-width:70px; }
+  .field.narrow{ flex: 0 0 72px; }
+  .field label{ display:block; font-size:10px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); margin-bottom:2px; }
+  .field input, .field select{
+    width:100%; font-family:var(--sans); font-size:14px; padding:7px 8px;
+    border:1px solid var(--line); border-radius:6px; background:#fcfcfa; color:var(--ink);
+  }
+  .field input:focus, .field select:focus{ outline:2px solid var(--teal); outline-offset:1px; }
+  .pup-row{ display:none; gap:8px; flex-wrap:wrap; }
+  .pup-row.show{ display:flex; }
+  .entry-actions{ display:flex; justify-content:flex-end; }
+  .del-btn{
+    background:none; border:none; color:var(--danger); font-family:var(--mono);
+    font-size:12px; padding:4px 6px;
+  }
+
+  .export-bar{
+    position:fixed; left:0; right:0; bottom:0; z-index:20;
+    background:#fff; border-top:1px solid var(--line);
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    display:flex; gap:10px;
+  }
+  .export-bar .btn{ font-size:14px; padding:12px 10px; }
+  .btn-export{ background: var(--ink); color:#fff; }
+  .btn-export-alt{ background:#fff; color:var(--ink); border:1px solid var(--line); }
+
+  a.visually-hidden{ position:absolute; left:-9999px; }
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(17,20,19,0.55); z-index:50;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal-card{
+    background:#fff; width:100%; max-width:480px; border-radius: 14px 14px 0 0;
+    padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+    max-height: 88vh; overflow-y:auto;
+  }
+  .modal-card h2{
+    font-family:var(--mono); font-size:15px; margin:0 0 4px; letter-spacing:0.01em;
+  }
+  .modal-sub{ font-size:12px; color:var(--ink-soft); margin:0 0 14px; }
+  .modal-step{ display:none; }
+  .modal-step.show{ display:block; }
+  .modal-field-row{ display:flex; gap:10px; margin-bottom:12px; }
+  .modal-field{ flex:1; }
+  .modal-field label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); margin-bottom:4px; }
+  .modal-field input{
+    width:100%; font-size:16px; padding:10px 10px; border:1px solid var(--line);
+    border-radius:8px; background:#fcfcfa; color:var(--ink); font-family:var(--sans);
+  }
+  .modal-field input:focus{ outline:2px solid var(--teal); outline-offset:1px; }
+  .yn-row{ display:flex; gap:10px; margin-bottom:14px; }
+  .yn-btn{
+    flex:1; padding:14px 10px; border-radius:9px; border:1px solid var(--line);
+    background:#fcfcfa; font-weight:700; font-size:15px; color:var(--ink);
+  }
+  .modal-actions{ display:flex; gap:10px; margin-top:6px; }
+  .modal-actions .btn{ padding:13px 16px; }
+  .skip-link{
+    display:block; width:100%; text-align:center; margin-top:10px; background:none; border:none;
+    color:var(--ink-soft); font-size:13px; text-decoration:underline; padding:6px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .flash.go{ animation:none; }
+    .btn:active{ transform:none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="stripe" aria-hidden="true"></div>
+    <h1>COLONY SCANNER</h1>
+  </div>
+  <div class="count" id="countLabel">0 scanned</div>
+</header>
+
+<div class="scan-panel">
+  <div class="viewfinder" id="viewfinder">
+    <video id="video" playsinline muted></video>
+    <div class="reticle" id="reticle" style="display:none;"></div>
+    <div class="idle-state" id="idleState">Tap "Start scanning" to turn on the camera and point it at a cage card barcode.</div>
+    <div class="flash" id="flash"></div>
+  </div>
+  <div class="scan-controls">
+    <button class="btn btn-primary" id="toggleScanBtn">Start scanning</button>
+    <button class="btn btn-ghost" id="manualBtn" title="Add a row by hand">+ Manual</button>
+  </div>
+  <div class="status-line" id="statusLine">Ready.</div>
+</div>
+
+<div class="toolbar">
+  <button class="btn-small" id="undoBtn" disabled>Undo delete</button>
+  <div class="spacer"></div>
+  <button class="btn-small warn" id="clearBtn">Clear all</button>
+</div>
+
+<div class="list" id="list">
+  <div class="empty" id="emptyMsg">No cards scanned yet. Entries will appear here as you scan.</div>
+</div>
+
+<div class="export-bar">
+  <button class="btn btn-export" id="exportXlsxBtn">Export .xlsx</button>
+  <button class="btn btn-export-alt" id="exportCsvBtn">Export .csv</button>
+</div>
+
+<a id="downloadLink" class="visually-hidden"></a>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-card">
+    <div class="modal-step show" id="stepCounts">
+      <h2>Cage counts</h2>
+      <p class="modal-sub">How many mice are in this cage?</p>
+      <div class="modal-field-row">
+        <div class="modal-field">
+          <label>Males</label>
+          <input type="number" id="malesInput" min="0" inputmode="numeric" placeholder="0">
+        </div>
+        <div class="modal-field">
+          <label>Females</label>
+          <input type="number" id="femalesInput" min="0" inputmode="numeric" placeholder="0">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="countsContinueBtn">Continue</button>
+      </div>
+      <button class="skip-link" id="skipFromCounts">Skip for now</button>
+    </div>
+
+    <div class="modal-step" id="stepBreeding">
+      <h2>Breeding cage?</h2>
+      <p class="modal-sub">This cage has 1 male and 1 female. Is it a breeding pair?</p>
+      <div class="yn-row">
+        <button class="yn-btn" id="breedingYesBtn">Yes</button>
+        <button class="yn-btn" id="breedingNoBtn">No</button>
+      </div>
+      <button class="skip-link" id="skipFromBreeding">Skip for now</button>
+    </div>
+
+    <div class="modal-step" id="stepPups">
+      <h2>Litter details</h2>
+      <p class="modal-sub">Add what you know now &mdash; you can edit these later.</p>
+      <div class="modal-field-row">
+        <div class="modal-field">
+          <label># of pups</label>
+          <input type="number" id="pupsCountInput" min="0" inputmode="numeric" placeholder="0">
+        </div>
+        <div class="modal-field">
+          <label>Litter number</label>
+          <input type="text" id="litterNumberInput" placeholder="e.g. 1">
+        </div>
+      </div>
+      <div class="modal-field-row">
+        <div class="modal-field">
+          <label>Pups DOB (MM/DD)</label>
+          <input type="text" id="pupsDobInput" placeholder="MM/DD" maxlength="5" inputmode="numeric" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="savePupsBtn">Save</button>
+      </div>
+      <button class="skip-link" id="skipFromPups">Skip for now</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script>
+(function(){
+  "use strict";
+
+  var STORAGE_KEY = "colonyScannerEntries.v2";
+  var entries = [];
+  var lastDeleted = null;
+  var nextRowId = 1;
+
+  var listEl = document.getElementById("list");
+  var emptyMsg = document.getElementById("emptyMsg");
+  var countLabel = document.getElementById("countLabel");
+  var statusLine = document.getElementById("statusLine");
+  var toggleScanBtn = document.getElementById("toggleScanBtn");
+  var manualBtn = document.getElementById("manualBtn");
+  var undoBtn = document.getElementById("undoBtn");
+  var clearBtn = document.getElementById("clearBtn");
+  var exportXlsxBtn = document.getElementById("exportXlsxBtn");
+  var exportCsvBtn = document.getElementById("exportCsvBtn");
+  var idleState = document.getElementById("idleState");
+  var reticle = document.getElementById("reticle");
+  var flashEl = document.getElementById("flash");
+  var videoEl = document.getElementById("video");
+  var downloadLink = document.getElementById("downloadLink");
+
+  var modalOverlay = document.getElementById("modalOverlay");
+  var stepCounts = document.getElementById("stepCounts");
+  var stepBreeding = document.getElementById("stepBreeding");
+  var stepPups = document.getElementById("stepPups");
+  var malesInput = document.getElementById("malesInput");
+  var femalesInput = document.getElementById("femalesInput");
+  var countsContinueBtn = document.getElementById("countsContinueBtn");
+  var skipFromCounts = document.getElementById("skipFromCounts");
+  var breedingYesBtn = document.getElementById("breedingYesBtn");
+  var breedingNoBtn = document.getElementById("breedingNoBtn");
+  var skipFromBreeding = document.getElementById("skipFromBreeding");
+  var pupsCountInput = document.getElementById("pupsCountInput");
+  var litterNumberInput = document.getElementById("litterNumberInput");
+  var pupsDobInput = document.getElementById("pupsDobInput");
+  var savePupsBtn = document.getElementById("savePupsBtn");
+  var skipFromPups = document.getElementById("skipFromPups");
+
+  var modalEntry = null;
+  var modalOpen = false;
+
+  function loadEntries(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        entries = JSON.parse(raw);
+        entries.forEach(function(e){ if(e.id >= nextRowId) nextRowId = e.id + 1; });
+      }
+    }catch(err){ entries = []; }
+  }
+
+  function saveEntries(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); }catch(err){}
+  }
+
+  function fmtTime(ts){
+    var d = new Date(ts);
+    var pad = function(n){ return (n<10?"0":"")+n; };
+    return pad(d.getMonth()+1)+"/"+pad(d.getDate())+" "+pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds());
+  }
+
+  function guessCageNumber(code){
+    var digits = code.replace(/[^0-9]/g, "");
+    return digits.length ? digits : "";
+  }
+
+  function formatMonthDay(raw){
+    var digits = String(raw == null ? "" : raw).replace(/[^0-9]/g, "").slice(0, 4);
+    if(digits.length <= 2) return digits;
+    return digits.slice(0, 2) + "/" + digits.slice(2);
+  }
+
+  function fullPupsDOB(mmdd){
+    if(!mmdd) return "";
+    var m = /^(\d{1,2})\/(\d{1,2})$/.exec(mmdd);
+    if(!m) return mmdd; // incomplete entry, export as-is
+    var year = new Date().getFullYear();
+    return m[1] + "/" + m[2] + "/" + year;
+  }
+
+  function isBreedingPair(entry){
+    return String(entry.males) === "1" && String(entry.females) === "1";
+  }
+
+  function render(){
+    listEl.querySelectorAll(".entry").forEach(function(n){ n.remove(); });
+    emptyMsg.style.display = entries.length ? "none" : "block";
+    countLabel.textContent = entries.length + (entries.length === 1 ? " scanned" : " scanned");
+    undoBtn.disabled = !lastDeleted;
+
+    entries.forEach(function(entry, idx){
+      var row = document.createElement("div");
+      var isBreeding = entry.breeding === "Yes";
+      row.className = "entry" + (entry.manual ? " manual" : "") + (isBreeding ? " breeding" : "");
+      row.innerHTML =
+        '<div class="tab" aria-hidden="true"></div>' +
+        '<div class="entry-body">' +
+          '<div class="entry-row1">' +
+            '<span class="entry-idx">#' + (idx+1) + (entry.manual ? " \u00b7 manual" : "") + '</span>' +
+            '<span class="entry-time">' + fmtTime(entry.timestamp) + '</span>' +
+          '</div>' +
+          (entry.manual ? "" : '<div class="entry-code">' + escapeHtml(entry.rawCode) + '</div>') +
+          '<div class="field-row">' +
+            '<div class="field"><label>Cage / animal ID</label><input type="text" data-field="cageNumber" value="' + escapeAttr(entry.cageNumber) + '" inputmode="numeric"></div>' +
+            '<div class="field"><label>Notes</label><input type="text" data-field="notes" value="' + escapeAttr(entry.notes) + '"></div>' +
+          '</div>' +
+          '<div class="field-row">' +
+            '<div class="field narrow"><label>Males</label><input type="number" min="0" data-field="males" value="' + escapeAttr(entry.males) + '"></div>' +
+            '<div class="field narrow"><label>Females</label><input type="number" min="0" data-field="females" value="' + escapeAttr(entry.females) + '"></div>' +
+            '<div class="field"><label>Breeding cage?</label>' +
+              '<select data-field="breeding">' +
+                '<option value=""' + (entry.breeding === "" ? " selected" : "") + '>\u2014</option>' +
+                '<option value="Yes"' + (entry.breeding === "Yes" ? " selected" : "") + '>Yes</option>' +
+                '<option value="No"' + (entry.breeding === "No" ? " selected" : "") + '>No</option>' +
+              '</select>' +
+            '</div>' +
+          '</div>' +
+          '<div class="pup-row' + (isBreeding ? " show" : "") + '" data-role="pupRow">' +
+            '<div class="field narrow"><label># Pups</label><input type="number" min="0" data-field="pupsCount" value="' + escapeAttr(entry.pupsCount) + '"></div>' +
+            '<div class="field"><label>Pups DOB (MM/DD)</label><input type="text" data-field="pupsDOB" placeholder="MM/DD" maxlength="5" inputmode="numeric" autocomplete="off" value="' + escapeAttr(entry.pupsDOB) + '"></div>' +
+            '<div class="field"><label>Litter #</label><input type="text" data-field="litterNumber" value="' + escapeAttr(entry.litterNumber) + '"></div>' +
+          '</div>' +
+          '<div class="entry-actions"><button class="del-btn" data-action="delete">Delete row</button></div>' +
+        '</div>';
+
+      row.querySelector('[data-field="cageNumber"]').addEventListener("input", function(e){
+        entry.cageNumber = e.target.value; saveEntries();
+      });
+      row.querySelector('[data-field="notes"]').addEventListener("input", function(e){
+        entry.notes = e.target.value; saveEntries();
+      });
+      row.querySelector('[data-field="males"]').addEventListener("input", function(e){
+        entry.males = e.target.value; saveEntries();
+      });
+      row.querySelector('[data-field="females"]').addEventListener("input", function(e){
+        entry.females = e.target.value; saveEntries();
+      });
+      row.querySelector('[data-field="breeding"]').addEventListener("change", function(e){
+        entry.breeding = e.target.value; saveEntries();
+        var pupRow = row.querySelector('[data-role="pupRow"]');
+        var showPups = e.target.value === "Yes";
+        pupRow.classList.toggle("show", showPups);
+        row.classList.toggle("breeding", showPups);
+        row.querySelector(".tab").style.background = showPups ? "#7a4fa0" : (entry.manual ? "var(--amber)" : "var(--teal)");
+      });
+      row.querySelector('[data-field="pupsCount"]').addEventListener("input", function(e){
+        entry.pupsCount = e.target.value; saveEntries();
+      });
+      row.querySelector('[data-field="pupsDOB"]').addEventListener("input", function(e){
+        e.target.value = formatMonthDay(e.target.value);
+        entry.pupsDOB = e.target.value; saveEntries();
+      });
+      row.querySelector('[data-field="litterNumber"]').addEventListener("input", function(e){
+        entry.litterNumber = e.target.value; saveEntries();
+      });
+      row.querySelector('[data-action="delete"]').addEventListener("click", function(){
+        deleteEntry(entry.id);
+      });
+
+      listEl.appendChild(row);
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+  function escapeAttr(s){ return escapeHtml(s); }
+
+  function newEntryObj(rawCode, manual){
+    return {
+      id: nextRowId++,
+      rawCode: manual ? "" : rawCode,
+      cageNumber: manual ? "" : guessCageNumber(rawCode),
+      notes: "",
+      timestamp: Date.now(),
+      manual: !!manual,
+      males: "",
+      females: "",
+      breeding: "",
+      pupsCount: "",
+      pupsDOB: "",
+      litterNumber: ""
+    };
+  }
+
+  function addEntry(rawCode, manual){
+    var now = Date.now();
+    if(!manual){
+      var dupe = entries.slice(-1)[0];
+      if(dupe && !dupe.manual && dupe.rawCode === rawCode && (now - dupe.timestamp) < 2500){
+        return null;
+      }
+    }
+    var entry = newEntryObj(rawCode, manual);
+    entries.push(entry);
+    saveEntries();
+    render();
+    return entry;
+  }
+
+  function deleteEntry(id){
+    var idx = entries.findIndex(function(e){ return e.id === id; });
+    if(idx === -1) return;
+    lastDeleted = { entry: entries[idx], index: idx };
+    entries.splice(idx, 1);
+    saveEntries();
+    render();
+  }
+
+  undoBtn.addEventListener("click", function(){
+    if(!lastDeleted) return;
+    entries.splice(lastDeleted.index, 0, lastDeleted.entry);
+    lastDeleted = null;
+    saveEntries();
+    render();
+  });
+
+  clearBtn.addEventListener("click", function(){
+    if(!entries.length) return;
+    if(confirm("Clear all " + entries.length + " scanned entries? This can't be undone.")){
+      entries = [];
+      lastDeleted = null;
+      saveEntries();
+      render();
+    }
+  });
+
+  manualBtn.addEventListener("click", function(){
+    var entry = addEntry("", true);
+    if(entry) openModal(entry);
+  });
+
+  function showStep(step){
+    [stepCounts, stepBreeding, stepPups].forEach(function(s){ s.classList.remove("show"); });
+    step.classList.add("show");
+  }
+
+  function openModal(entry){
+    modalEntry = entry;
+    modalOpen = true;
+    malesInput.value = "";
+    femalesInput.value = "";
+    pupsCountInput.value = "";
+    litterNumberInput.value = "";
+    pupsDobInput.value = "";
+    showStep(stepCounts);
+    modalOverlay.classList.add("open");
+    setTimeout(function(){ malesInput.focus(); }, 50);
+  }
+
+  function closeModal(){
+    modalOverlay.classList.remove("open");
+    modalOpen = false;
+    modalEntry = null;
+    saveEntries();
+    render();
+  }
+
+  countsContinueBtn.addEventListener("click", function(){
+    if(!modalEntry) return;
+    modalEntry.males = malesInput.value;
+    modalEntry.females = femalesInput.value;
+    if(isBreedingPair(modalEntry)){
+      showStep(stepBreeding);
+    } else {
+      closeModal();
+    }
+  });
+
+  skipFromCounts.addEventListener("click", function(){
+    if(!modalEntry) return;
+    modalEntry.males = malesInput.value;
+    modalEntry.females = femalesInput.value;
+    closeModal();
+  });
+
+  breedingYesBtn.addEventListener("click", function(){
+    if(!modalEntry) return;
+    modalEntry.breeding = "Yes";
+    showStep(stepPups);
+    setTimeout(function(){ pupsCountInput.focus(); }, 50);
+  });
+
+  breedingNoBtn.addEventListener("click", function(){
+    if(!modalEntry) return;
+    modalEntry.breeding = "No";
+    closeModal();
+  });
+
+  skipFromBreeding.addEventListener("click", function(){
+    closeModal();
+  });
+
+  pupsDobInput.addEventListener("input", function(e){
+    e.target.value = formatMonthDay(e.target.value);
+  });
+
+  savePupsBtn.addEventListener("click", function(){
+    if(!modalEntry) return;
+    modalEntry.pupsCount = pupsCountInput.value;
+    modalEntry.pupsDOB = pupsDobInput.value;
+    modalEntry.litterNumber = litterNumberInput.value;
+    closeModal();
+  });
+
+  skipFromPups.addEventListener("click", function(){
+    if(!modalEntry) return;
+    modalEntry.pupsCount = pupsCountInput.value;
+    modalEntry.pupsDOB = pupsDobInput.value;
+    modalEntry.litterNumber = litterNumberInput.value;
+    closeModal();
+  });
+
+  var codeReader = null;
+  var scanning = false;
+
+  function flashSuccess(){
+    flashEl.classList.remove("go");
+    void flashEl.offsetWidth;
+    flashEl.classList.add("go");
+    if(navigator.vibrate) navigator.vibrate(60);
+  }
+
+  function startScan(){
+    if(!window.ZXing){
+      statusLine.textContent = "Scanner library failed to load. Check your connection and reload.";
+      statusLine.classList.add("err");
+      return;
+    }
+    var hints = new Map();
+    try{
+      var BF = ZXing.BarcodeFormat;
+      var formats = [BF.QR_CODE, BF.CODE_128, BF.CODE_39, BF.CODE_93, BF.EAN_13, BF.EAN_8,
+                 BF.UPC_A, BF.UPC_E, BF.ITF, BF.CODABAR, BF.DATA_MATRIX, BF.PDF_417, BF.AZTEC];
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    }catch(e){ /* fall back to defaults */ }
+
+    codeReader = new ZXing.BrowserMultiFormatReader(hints);
+    statusLine.classList.remove("err");
+    statusLine.textContent = "Requesting camera access\u2026";
+    idleState.style.display = "none";
+    reticle.style.display = "block";
+
+    var constraints = { video: { facingMode: { ideal: "environment" } } };
+
+    codeReader.decodeFromConstraints(constraints, videoEl, function(result, err){
+      if(result){
+        if(modalOpen) return;
+        var entry = addEntry(result.getText(), false);
+        if(entry){
+          flashSuccess();
+          statusLine.classList.remove("err");
+          statusLine.textContent = "Scanned: " + result.getText();
+          openModal(entry);
+        }
+      }
+    }).then(function(){
+      scanning = true;
+      toggleScanBtn.textContent = "Stop scanning";
+      toggleScanBtn.classList.add("stop");
+      statusLine.classList.remove("err");
+      statusLine.textContent = "Scanning\u2026 point the camera at a barcode.";
+    }).catch(function(err){
+      scanning = false;
+      idleState.style.display = "flex";
+      reticle.style.display = "none";
+      statusLine.classList.add("err");
+      if(err && err.name === "NotAllowedError"){
+        statusLine.textContent = "Camera permission denied. Allow camera access in your browser settings and try again.";
+      } else if(err && err.name === "NotFoundError"){
+        statusLine.textContent = "No camera found on this device.";
+      } else {
+        statusLine.textContent = "Could not start camera: " + (err && err.message ? err.message : err);
+      }
+    });
+  }
+
+  function stopScan(){
+    if(codeReader){
+      try{ codeReader.reset(); }catch(e){}
+    }
+    scanning = false;
+    toggleScanBtn.textContent = "Start scanning";
+    toggleScanBtn.classList.remove("stop");
+    idleState.style.display = "flex";
+    reticle.style.display = "none";
+    statusLine.classList.remove("err");
+    statusLine.textContent = "Stopped.";
+  }
+
+  toggleScanBtn.addEventListener("click", function(){
+    if(scanning){ stopScan(); } else { startScan(); }
+  });
+
+  document.addEventListener("visibilitychange", function(){
+    if(document.hidden && scanning) stopScan();
+  });
+
+  function buildRows(){
+    return entries.map(function(e, idx){
+      return {
+        "#": idx + 1,
+        "Cage / Animal ID": e.cageNumber,
+        "Males": e.males,
+        "Females": e.females,
+        "Breeding Cage": e.breeding,
+        "Pups Count": e.pupsCount,
+        "Pups DOB": fullPupsDOB(e.pupsDOB),
+        "Litter Number": e.litterNumber,
+        "Notes": e.notes,
+        "Scanned Value": e.rawCode,
+        "Source": e.manual ? "Manual" : "Barcode scan",
+        "Timestamp": new Date(e.timestamp).toLocaleString()
+      };
+    });
+  }
+
+  function triggerDownload(blob, filename){
+    var url = URL.createObjectURL(blob);
+    downloadLink.href = url;
+    downloadLink.download = filename;
+    downloadLink.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  }
+
+  exportXlsxBtn.addEventListener("click", function(){
+    if(!entries.length){ statusLine.textContent = "Nothing to export yet."; return; }
+    var rows = buildRows();
+    var ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{wch:4},{wch:16},{wch:8},{wch:8},{wch:14},{wch:10},{wch:12},{wch:12},{wch:22},{wch:22},{wch:14},{wch:20}];
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Colony Scan");
+    var stamp = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, "colony-scan-" + stamp + ".xlsx");
+  });
+
+  exportCsvBtn.addEventListener("click", function(){
+    if(!entries.length){ statusLine.textContent = "Nothing to export yet."; return; }
+    var rows = buildRows();
+    var headers = Object.keys(rows[0]);
+    var lines = [headers.join(",")];
+    rows.forEach(function(r){
+      lines.push(headers.map(function(h){
+        var v = String(r[h] == null ? "" : r[h]);
+        if(/[",\n]/.test(v)) v = '"' + v.replace(/"/g, '""') + '"';
+        return v;
+      }).join(","));
+    });
+    var csv = "\uFEFF" + lines.join("\r\n");
+    var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    var stamp = new Date().toISOString().slice(0,10);
+    triggerDownload(blob, "colony-scan-" + stamp + ".csv");
+  });
+
+  loadEntries();
+  render();
+})();
+</script>
+
+</body>
+</html>
