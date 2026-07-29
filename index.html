@@ -241,6 +241,21 @@
 
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal-card">
+    <div class="modal-step" id="stepCageId">
+      <h2>Cage / animal ID</h2>
+      <p class="modal-sub">Enter the ID from this cage card.</p>
+      <div class="modal-field-row">
+        <div class="modal-field">
+          <label>Cage / Animal ID</label>
+          <input type="text" id="cageIdInput" inputmode="numeric" placeholder="e.g. 12345" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="cageIdContinueBtn">Continue</button>
+      </div>
+      <button class="skip-link" id="skipFromCageId">Skip for now</button>
+    </div>
+
     <div class="modal-step show" id="stepCounts">
       <h2>Cage counts</h2>
       <p class="modal-sub">How many mice are in this cage?</p>
@@ -329,6 +344,10 @@
   var downloadLink = document.getElementById("downloadLink");
 
   var modalOverlay = document.getElementById("modalOverlay");
+  var stepCageId = document.getElementById("stepCageId");
+  var cageIdInput = document.getElementById("cageIdInput");
+  var cageIdContinueBtn = document.getElementById("cageIdContinueBtn");
+  var skipFromCageId = document.getElementById("skipFromCageId");
   var stepCounts = document.getElementById("stepCounts");
   var stepBreeding = document.getElementById("stepBreeding");
   var stepPups = document.getElementById("stepPups");
@@ -547,26 +566,32 @@
 
   manualBtn.addEventListener("click", function(){
     var entry = addEntry("", true);
-    if(entry) openModal(entry);
+    if(entry) openModal(entry, true);
   });
 
   function showStep(step){
-    [stepCounts, stepBreeding, stepPups].forEach(function(s){ s.classList.remove("show"); });
+    [stepCageId, stepCounts, stepBreeding, stepPups].forEach(function(s){ s.classList.remove("show"); });
     step.classList.add("show");
   }
 
-  function openModal(entry){
+  function openModal(entry, askCageIdFirst){
     modalEntry = entry;
     modalOpen = true;
     syncModalHeight();
+    cageIdInput.value = entry.cageNumber || "";
     malesInput.value = "";
     femalesInput.value = "";
     pupsCountInput.value = "";
     litterNumberInput.value = "";
     pupsDobInput.value = "";
-    showStep(stepCounts);
     modalOverlay.classList.add("open");
-    setTimeout(function(){ malesInput.focus(); }, 50);
+    if(askCageIdFirst){
+      showStep(stepCageId);
+      setTimeout(function(){ cageIdInput.focus(); }, 50);
+    } else {
+      showStep(stepCounts);
+      setTimeout(function(){ malesInput.focus(); }, 50);
+    }
   }
 
   function closeModal(){
@@ -576,6 +601,21 @@
     saveEntries();
     render();
   }
+
+  cageIdContinueBtn.addEventListener("click", function(){
+    if(!modalEntry) return;
+    modalEntry.cageNumber = cageIdInput.value;
+    saveEntries();
+    render();
+    showStep(stepCounts);
+    setTimeout(function(){ malesInput.focus(); }, 50);
+  });
+
+  skipFromCageId.addEventListener("click", function(){
+    if(!modalEntry) return;
+    modalEntry.cageNumber = cageIdInput.value;
+    closeModal();
+  });
 
   countsContinueBtn.addEventListener("click", function(){
     if(!modalEntry) return;
@@ -634,6 +674,7 @@
 
   var codeReader = null;
   var scanning = false;
+  var frameCount = 0;
 
   function flashSuccess(){
     flashEl.classList.remove("go");
@@ -643,6 +684,7 @@
   }
 
   function startScan(){
+    frameCount = 0;
     if(!window.ZXing){
       statusLine.textContent = "Scanner library failed to load. Check your connection and reload.";
       statusLine.classList.add("err");
@@ -669,6 +711,7 @@
     var constraints = { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } };
 
     codeReader.decodeFromConstraints(constraints, videoEl, function(result, err){
+      frameCount++;
       if(result){
         var text = result.getText();
         // Cage cards encode plain numeric IDs. A read containing letters/symbols
@@ -686,6 +729,11 @@
           statusLine.textContent = "Scanned: " + text;
           openModal(entry);
         }
+      } else if(!modalOpen && frameCount % 15 === 0){
+        // Proves the camera loop is actually running, even when no barcode
+        // shape has been found yet in the frame.
+        statusLine.classList.remove("err");
+        statusLine.textContent = "Scanning\u2026 (" + frameCount + " frames checked, no barcode seen yet)";
       }
     }).then(function(){
       scanning = true;
