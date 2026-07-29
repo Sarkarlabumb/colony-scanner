@@ -627,8 +627,6 @@
 
   var codeReader = null;
   var scanning = false;
-  var pendingCode = null;
-  var pendingCount = 0;
 
   function flashSuccess(){
     flashEl.classList.remove("go");
@@ -638,8 +636,6 @@
   }
 
   function startScan(){
-    pendingCode = null;
-    pendingCount = 0;
     if(!window.ZXing){
       statusLine.textContent = "Scanner library failed to load. Check your connection and reload.";
       statusLine.classList.add("err");
@@ -662,7 +658,7 @@
     idleState.style.display = "none";
     reticle.style.display = "block";
 
-    var constraints = { video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } };
+    var constraints = { video: { facingMode: { ideal: "environment" } } };
 
     codeReader.decodeFromConstraints(constraints, videoEl, function(result, err){
       if(result){
@@ -670,26 +666,10 @@
         // Cage cards encode plain numeric IDs. A read containing letters/symbols
         // (e.g. "B8B D+A") is a Code 39 misfire, not a real cage number — ignore it.
         if(!/^[0-9]{4,14}$/.test(text)){
-          pendingCode = null; pendingCount = 0;
           statusLine.classList.remove("err");
           statusLine.textContent = "Scanning\u2026 hold steady on the barcode.";
           return;
         }
-        // Require the same value twice in a row before accepting, so a single
-        // noisy frame can't create a wrong entry.
-        if(text === pendingCode){
-          pendingCount++;
-        } else {
-          pendingCode = text;
-          pendingCount = 1;
-        }
-        if(pendingCount < 2){
-          statusLine.classList.remove("err");
-          statusLine.textContent = "Almost there\u2026 hold steady.";
-          return;
-        }
-        pendingCode = null;
-        pendingCount = 0;
         if(modalOpen) return;
         var entry = addEntry(text, false);
         if(entry){
