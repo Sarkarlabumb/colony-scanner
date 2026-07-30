@@ -6,7 +6,7 @@ A phone-based tool for scanning mouse cage card barcodes and exporting the data 
 
 ## Getting Started
 
-1. Open the link: **[insert your GitHub Pages link here]**
+1. Open the link: **[https://sarkarlabumb.github.io/colony-scanner/]**
 2. Tap the **Share** icon in Safari → **Add to Home Screen**. This puts a mouse-icon shortcut on your phone so you don't have to type the link every time.
 
 ---
