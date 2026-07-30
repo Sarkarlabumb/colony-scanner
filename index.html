@@ -216,6 +216,7 @@
   </div>
   <div class="scan-controls">
     <button class="btn btn-primary" id="toggleScanBtn">Start scanning</button>
+    <button class="btn btn-primary" id="captureBtn" style="display:none; background:var(--amber);">Capture</button>
     <button class="btn btn-ghost" id="manualBtn" title="Add a row by hand">+ Manual</button>
   </div>
   <div class="status-line" id="statusLine">Ready.</div>
@@ -329,6 +330,7 @@
   var countLabel = document.getElementById("countLabel");
   var statusLine = document.getElementById("statusLine");
   var toggleScanBtn = document.getElementById("toggleScanBtn");
+  var captureBtn = document.getElementById("captureBtn");
   var manualBtn = document.getElementById("manualBtn");
   var undoBtn = document.getElementById("undoBtn");
   var clearBtn = document.getElementById("clearBtn");
@@ -683,6 +685,63 @@
     if(navigator.vibrate) navigator.vibrate(60);
   }
 
+  function handleDecodedText(text){
+    // Cage cards encode plain numeric IDs. A read containing letters/symbols
+    // (e.g. "B8B D+A") is a Code 39 misfire, not a real cage number — ignore it.
+    if(!/^[0-9]{4,14}$/.test(text)){
+      statusLine.classList.remove("err");
+      statusLine.textContent = "Read (ignored, not numeric): " + text;
+      return false;
+    }
+    if(modalOpen) return false;
+    var entry = addEntry(text, false);
+    if(entry){
+      flashSuccess();
+      statusLine.classList.remove("err");
+      statusLine.textContent = "Scanned: " + text;
+      openModal(entry);
+      return true;
+    }
+    return false;
+  }
+
+  captureBtn.addEventListener("click", function(){
+    if(!scanning || !videoEl.videoWidth){
+      statusLine.classList.remove("err");
+      statusLine.textContent = "Camera isn't ready yet \u2014 wait a moment and try again.";
+      return;
+    }
+    statusLine.classList.remove("err");
+    statusLine.textContent = "Reading captured frame\u2026";
+    var canvas = document.createElement("canvas");
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    var ctx = canvas.getContext("2d");
+    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+    function reportNoCode(){
+      statusLine.classList.remove("err");
+      statusLine.textContent = "No barcode found in that frame \u2014 hold steady and tap Capture again.";
+    }
+
+    if(typeof codeReader.decodeFromCanvas === "function"){
+      try{
+        var result = codeReader.decodeFromCanvas(canvas);
+        handleDecodedText(result.getText());
+      }catch(e){ reportNoCode(); }
+    } else {
+      // Fallback for library builds without decodeFromCanvas.
+      var img = new Image();
+      img.onload = function(){
+        codeReader.decodeFromImageElement(img).then(function(result){
+          handleDecodedText(result.getText());
+        }).catch(function(){ reportNoCode(); });
+      };
+      img.onerror = reportNoCode;
+      img.src = canvas.toDataURL("image/png");
+    }
+  });
+
   function startScan(){
     frameCount = 0;
     if(!window.ZXing){
@@ -696,7 +755,10 @@
       // Cage cards use Code 39 (confirmed from sample barcodes). Code 128 kept as a
       // fallback in case some cards differ. Narrowing formats (vs. checking all
       // 1D/2D types every frame) is what makes scanning fast and accurate.
-      var formats = [BF.CODE_39, BF.CODE_128];
+      // Temporarily widened to include retail formats (UPC/EAN) so a standard
+      // product barcode can be used as a control test of the camera/decoder
+      // pipeline itself, separate from whether Code 39 specifically works.
+      var formats = [BF.CODE_39, BF.CODE_128, BF.EAN_13, BF.EAN_8, BF.UPC_A, BF.UPC_E, BF.QR_CODE];
       hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
       hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
     }catch(e){ /* fall back to defaults */ }
@@ -708,27 +770,12 @@
     reticle.style.display = "block";
     focusHint.style.display = "block";
 
-    var constraints = { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } };
+    var constraints = { video: { facingMode: { ideal: "environment" } } };
 
     codeReader.decodeFromConstraints(constraints, videoEl, function(result, err){
       frameCount++;
       if(result){
-        var text = result.getText();
-        // Cage cards encode plain numeric IDs. A read containing letters/symbols
-        // (e.g. "B8B D+A") is a Code 39 misfire, not a real cage number — ignore it.
-        if(!/^[0-9]{4,14}$/.test(text)){
-          statusLine.classList.remove("err");
-          statusLine.textContent = "Read (ignored, not numeric): " + text;
-          return;
-        }
-        if(modalOpen) return;
-        var entry = addEntry(text, false);
-        if(entry){
-          flashSuccess();
-          statusLine.classList.remove("err");
-          statusLine.textContent = "Scanned: " + text;
-          openModal(entry);
-        }
+        handleDecodedText(result.getText());
       } else if(!modalOpen && frameCount % 15 === 0){
         // Proves the camera loop is actually running, even when no barcode
         // shape has been found yet in the frame.
@@ -739,6 +786,7 @@
       scanning = true;
       toggleScanBtn.textContent = "Stop scanning";
       toggleScanBtn.classList.add("stop");
+      captureBtn.style.display = "";
       statusLine.classList.remove("err");
       statusLine.textContent = "Scanning\u2026 point the camera at a barcode.";
     }).catch(function(err){
@@ -746,6 +794,7 @@
       idleState.style.display = "flex";
       reticle.style.display = "none";
       focusHint.style.display = "none";
+      captureBtn.style.display = "none";
       statusLine.classList.add("err");
       if(err && err.name === "NotAllowedError"){
         statusLine.textContent = "Camera permission denied. Allow camera access in your browser settings and try again.";
@@ -764,6 +813,7 @@
     scanning = false;
     toggleScanBtn.textContent = "Start scanning";
     toggleScanBtn.classList.remove("stop");
+    captureBtn.style.display = "none";
     idleState.style.display = "flex";
     reticle.style.display = "none";
       focusHint.style.display = "none";
