@@ -244,7 +244,7 @@
   <div class="modal-card">
     <div class="modal-step" id="stepCageId">
       <h2>Cage / animal ID</h2>
-      <p class="modal-sub">Enter the ID from this cage card.</p>
+      <p class="modal-sub" id="stepCageIdSub">Enter the ID from this cage card.</p>
       <div class="modal-field-row">
         <div class="modal-field">
           <label>Cage / Animal ID</label>
@@ -296,7 +296,7 @@
         </div>
         <div class="modal-field">
           <label>Litter number</label>
-          <input type="text" id="litterNumberInput" placeholder="e.g. 1">
+          <input type="text" id="litterNumberInput" inputmode="numeric" placeholder="e.g. 1">
         </div>
       </div>
       <div class="modal-field-row">
@@ -347,6 +347,7 @@
 
   var modalOverlay = document.getElementById("modalOverlay");
   var stepCageId = document.getElementById("stepCageId");
+  var stepCageIdSub = document.getElementById("stepCageIdSub");
   var cageIdInput = document.getElementById("cageIdInput");
   var cageIdContinueBtn = document.getElementById("cageIdContinueBtn");
   var skipFromCageId = document.getElementById("skipFromCageId");
@@ -444,8 +445,8 @@
             '<div class="field"><label>Notes</label><input type="text" data-field="notes" value="' + escapeAttr(entry.notes) + '"></div>' +
           '</div>' +
           '<div class="field-row">' +
-            '<div class="field narrow"><label>Males</label><input type="number" min="0" data-field="males" value="' + escapeAttr(entry.males) + '"></div>' +
-            '<div class="field narrow"><label>Females</label><input type="number" min="0" data-field="females" value="' + escapeAttr(entry.females) + '"></div>' +
+            '<div class="field narrow"><label>Males</label><input type="number" min="0" inputmode="numeric" data-field="males" value="' + escapeAttr(entry.males) + '"></div>' +
+            '<div class="field narrow"><label>Females</label><input type="number" min="0" inputmode="numeric" data-field="females" value="' + escapeAttr(entry.females) + '"></div>' +
             '<div class="field"><label>Breeding cage?</label>' +
               '<select data-field="breeding">' +
                 '<option value=""' + (entry.breeding === "" ? " selected" : "") + '>\u2014</option>' +
@@ -455,9 +456,9 @@
             '</div>' +
           '</div>' +
           '<div class="pup-row' + (isBreeding ? " show" : "") + '" data-role="pupRow">' +
-            '<div class="field narrow"><label># Pups</label><input type="number" min="0" data-field="pupsCount" value="' + escapeAttr(entry.pupsCount) + '"></div>' +
+            '<div class="field narrow"><label># Pups</label><input type="number" min="0" inputmode="numeric" data-field="pupsCount" value="' + escapeAttr(entry.pupsCount) + '"></div>' +
             '<div class="field"><label>Pups DOB (MM/DD)</label><input type="text" data-field="pupsDOB" placeholder="MM/DD" maxlength="5" inputmode="numeric" autocomplete="off" value="' + escapeAttr(entry.pupsDOB) + '"></div>' +
-            '<div class="field"><label>Litter #</label><input type="text" data-field="litterNumber" value="' + escapeAttr(entry.litterNumber) + '"></div>' +
+            '<div class="field"><label>Litter #</label><input type="text" inputmode="numeric" data-field="litterNumber" value="' + escapeAttr(entry.litterNumber) + '"></div>' +
           '</div>' +
           '<div class="entry-actions"><button class="del-btn" data-action="delete">Delete row</button></div>' +
         '</div>';
@@ -568,7 +569,7 @@
 
   manualBtn.addEventListener("click", function(){
     var entry = addEntry("", true);
-    if(entry) openModal(entry, true);
+    if(entry) openModal(entry);
   });
 
   function showStep(step){
@@ -576,7 +577,7 @@
     step.classList.add("show");
   }
 
-  function openModal(entry, askCageIdFirst){
+  function openModal(entry){
     modalEntry = entry;
     modalOpen = true;
     syncModalHeight();
@@ -587,13 +588,13 @@
     litterNumberInput.value = "";
     pupsDobInput.value = "";
     modalOverlay.classList.add("open");
-    if(askCageIdFirst){
-      showStep(stepCageId);
-      setTimeout(function(){ cageIdInput.focus(); }, 50);
+    if(entry.manual){
+      stepCageIdSub.textContent = "Enter the ID from this cage card.";
     } else {
-      showStep(stepCounts);
-      setTimeout(function(){ malesInput.focus(); }, 50);
+      stepCageIdSub.textContent = "Read from the barcode \u2014 check it's correct, or edit it if the scan looks wrong.";
     }
+    showStep(stepCageId);
+    setTimeout(function(){ cageIdInput.focus(); cageIdInput.select(); }, 50);
   }
 
   function closeModal(){
@@ -705,6 +706,13 @@
     return false;
   }
 
+  function restartScanSession(){
+    setTimeout(function(){
+      stopScan();
+      startScan();
+    }, 900);
+  }
+
   captureBtn.addEventListener("click", function(){
     if(!scanning || !videoEl.videoWidth){
       statusLine.classList.remove("err");
@@ -729,15 +737,16 @@
         var result = codeReader.decodeFromCanvas(canvas);
         handleDecodedText(result.getText());
       }catch(e){ reportNoCode(); }
+      restartScanSession();
     } else {
       // Fallback for library builds without decodeFromCanvas.
       var img = new Image();
       img.onload = function(){
         codeReader.decodeFromImageElement(img).then(function(result){
           handleDecodedText(result.getText());
-        }).catch(function(){ reportNoCode(); });
+        }).catch(function(){ reportNoCode(); }).then(restartScanSession);
       };
-      img.onerror = reportNoCode;
+      img.onerror = function(){ reportNoCode(); restartScanSession(); };
       img.src = canvas.toDataURL("image/png");
     }
   });
