@@ -67,4 +67,4 @@ Your data stays saved in the app between visits (even if you close the browser),
 
 ---
 
-*Questions or issues? Let [your name] know what you ran into — screenshots of the on-screen message when something goes wrong are especially helpful.*
+*Questions or issues? Let Saumen know what you ran into — screenshots of the on-screen message when something goes wrong are especially helpful.*
